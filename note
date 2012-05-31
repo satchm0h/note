@@ -1,0 +1,233 @@
+#!/usr/bin/perl
+
+use strict;
+use Term::ReadLine;
+
+# User Configuration
+
+my $NOTE_HOME = "~/Dropbox/Notes";
+my $NOTE_EXT = "txt";
+my $EDITOR = $ENV{EDITOR};
+my $SELECT_LIST_LEN = 5;
+
+# Woe to ye who edit below here. Thar be demons
+
+
+# Setup the shell structure and bind callbacks
+my $cmd = { n => { desc => "New Note",
+                   type => 'terminal',
+                   func => \&newNote,
+                 },
+            l => { desc => "List Notes",
+                   type => 'terminal',
+                   func => \&listNotes,
+                 },
+            e => { desc => "Edit Note",
+                   type => 'terminal',
+                   func => \&editNotes,
+                 },
+            s => { desc => "Search Notes",
+                   type => 'terminal',
+                   func => \&searchNotes,
+                 },
+            o => { desc => "Open Notes",
+                   type => 'terminal',
+                   func => \&openNote,
+                 },
+            d => { desc => "Open Notes Directory",
+                   type => 'terminal',
+                   func => \&openNotesDir,
+                 },
+          };
+
+# Setup some pointers in case we want to make it more than one level deep
+my $cur_level = $cmd;
+my $prev_level = $cmd;
+my @notes = ();
+
+#
+# BEGIN MAIN
+#
+
+my $term = Term::ReadLine->new('Note Manager');
+my $prompt = "note-tool> ";
+my $OUT = $term->OUT || \*STDOUT;
+
+# Lets load the note names
+print "\n";
+my $note_count = loadNotes();
+print "Loaded $note_count Notes from $NOTE_HOME\n";
+
+
+# Enter Event Loop
+while (1)
+{
+    # Output the menu
+    print "\nAvailable Commands:\n";
+    foreach my $key (sort keys %{$cur_level})
+    {
+        print "  $key : $cur_level->{$key}{desc}\n";
+    }
+    print "\n";
+
+    # Build the promt and process the input
+    $_ = $term->readline($prompt);
+    chomp;
+    my @opts = split /\s+/;
+    my $cmd = shift @opts;
+    print "Got Command : $cmd\n";
+    print "\n";
+    if (!defined $cur_level->{$cmd})
+    {
+        if (/^\s*exit\s*$/i || /^\s*q\s*$/i)
+        {
+            print "  Thanks for playing!\n\n";
+            exit (0);
+        }
+        print "  $cmd : Command Not Found\n";
+    }
+    else
+    {
+        &{$cur_level->{$cmd}->{func}}(@opts);
+    }
+    $term->addhistory($_) if /\S/;
+    print "\n";
+}
+
+#
+# END MAIN
+#
+
+#
+# Callbacks
+#
+
+sub newNote
+{
+    my ($note) = @_;
+
+    if (!$note)
+    {
+        print "\tEnter note name : ";
+        $note = <STDIN>;
+        chomp $note;
+    }
+    editNote(genName($note));
+    loadNotes();
+}
+
+
+sub listNotes
+{
+    loadNotes();
+    print join "\n", sort(@notes);
+};
+
+
+sub openNotesDir
+{
+    print "    Opening $NOTE_HOME in finder\n";
+    `cd $NOTE_HOME && open .`;
+}
+
+sub openNote
+{
+    my ($file) = @_;
+
+    if (!defined($file))
+    {
+        $file = selectFile(@notes);
+    }
+    `cd $NOTE_HOME && open $file`;
+}
+
+sub editNotes
+{
+    my ($file) = @_;
+
+    if (!defined($file))
+    {
+        $file = selectFile(@notes);
+    }
+    editNote($file);
+    loadNotes();
+}
+
+sub searchNotes
+{
+    my $search =  join ' ', @_;
+
+    if (!$search)
+    {
+        print "    Enter search term : ";
+        $search = <STDIN>;
+        chomp $search;
+    }
+    print "    Searching for : '$search'\n\n";
+    system("cd $NOTE_HOME && grep -ic \"$search\" *.txt |grep -v :0\$")
+
+}
+
+#
+# Helper functions
+#
+
+# Reload the global list of notes
+sub loadNotes
+{
+    @notes = `cd $NOTE_HOME && ls -1 *.txt`;
+    chomp @notes;
+    return scalar(@notes);
+}
+
+# Tack the ld sortable date to the beginning of the filename
+sub genName
+{
+    my ($note) = @_;
+    my @date = localtime();
+    $date[4] += 1;
+    my $month = ($date[4] < 10) ? "0$date[4]" : "$date[4]";
+    my $day = ($date[3] < 10) ? "0$date[3]" : "$date[3]";
+    my $stamp = $date[5]+1900 . $month . $day;
+    my $fname = "$stamp$note.$NOTE_EXT";
+}
+
+sub editNote
+{
+    my ($fname) =  @_;
+    print "    Editing : $fname\n";
+    system("cd $NOTE_HOME && $EDITOR $fname");
+}
+
+sub selectFile
+{
+    my @file_list = @_;
+    @file_list = reverse sort @file_list;
+
+    my $start = 0;
+    my $stop = ($SELECT_LIST_LEN > scalar(@file_list)) ?
+               scalar(@file_list) : $SELECT_LIST_LEN;
+    my $selection;
+    while ($selection !~ /^\d+$/)
+    {
+        my $i;
+        print "\n";
+        for($i=$start; $i < $start+$stop; $i++)
+        {
+            next if ($file_list[$i] =~ /^\s*$/);
+            print "    $i : $file_list[$i]\n";
+        }
+        $start = $i;
+        $start = 0 if ($start >= scalar(@file_list));
+
+        print "\n    Select a note by number : ";
+        $selection = <STDIN>;
+        chomp $selection;
+        if ($selection =~ /^\d+$/)
+        {
+            $selection = undef unless exists $file_list[$selection];
+        }
+    }
+    return $file_list[$selection];
+}
+
