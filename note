@@ -5,10 +5,31 @@ use Term::ReadLine;
 
 # User Configuration
 
-my $NOTE_HOME = "~/Dropbox/Notes";
-my $NOTE_EXT = "txt";
-my $EDITOR = $ENV{EDITOR};
+my $NOTE_HOME = $ENV{HOME} ."/Dropbox/Notes";
+my $NOTE_EXT = "md";
 my $SELECT_LIST_LEN = 5;
+my $EDITOR = $ENV{EDITOR};
+
+$EDITOR = $ENV{NOTE_EDITOR} if $ENV{NOTE_EDITOR};
+$NOTE_EXT = $ENV{NOTE_EXT} if $ENV{NOTE_EXT};
+
+unless (-d $NOTE_HOME) {
+  if (-d $ENV{HOME} ."/Documents/notes") {
+    $NOTE_HOME = $ENV{HOME} ."/Documents/notes";
+  }
+  elsif (-d $ENV{HOME} ."/notes") {
+    $NOTE_HOME = $ENV{HOME} ."/notes";
+  }
+  elsif (-d $ENV{HOME} ."/Documents") {
+    $NOTE_HOME = $ENV{HOME} ."/Documents";
+  }
+  elsif (mkdir($ENV{HOME} ."/notes")) {
+    $NOTE_HOME = $ENV{HOME} ."/notes";
+  }
+  else {
+    $NOTE_HOME = $ENV{HOME};
+  }
+}
 
 # Woe to ye who edit below here. Thar be demons
 
@@ -164,7 +185,7 @@ sub searchNotes
         chomp $search;
     }
     print "    Searching for : '$search'\n\n";
-    system("cd $NOTE_HOME && grep -ic \"$search\" *.txt |grep -v :0\$")
+    system("cd $NOTE_HOME && grep -ic \"$search\" *.$NOTE_EXT |grep -v :0\$")
 
 }
 
@@ -175,7 +196,7 @@ sub searchNotes
 # Reload the global list of notes
 sub loadNotes
 {
-    @notes = `cd $NOTE_HOME && ls -1 *.txt`;
+    @notes = `cd $NOTE_HOME && ls -1 *.$NOTE_EXT`;
     chomp @notes;
     return scalar(@notes);
 }
@@ -230,4 +251,3 @@ sub selectFile
     }
     return $file_list[$selection];
 }
-
